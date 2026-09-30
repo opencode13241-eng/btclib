@@ -205,8 +205,10 @@ def test_script_sig_is_not_validated_and_that_is_the_answer() -> None:
     assert TxIn().is_coinbase
     assert not TxIn().script_sig
 
-    # and the coinbase rule is enforced where the transaction is known
-    tx = Tx(vin=[TxIn()], vout=[], check_validity=False)
+    # and the coinbase rule is enforced where the transaction is known --
+    # a real output, so that this transaction breaks no other rule and
+    # the coinbase check is the one actually reached (issue #2417)
+    tx = Tx(vin=[TxIn()], vout=[TxOut(1, "")], check_validity=False)
     with pytest.raises(BTClibValueError, match="Invalid coinbase script size"):
         tx.assert_valid()
 

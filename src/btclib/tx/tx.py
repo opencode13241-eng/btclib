@@ -340,8 +340,6 @@ class Tx:  # noqa: PLW1641
         point of the format. BIP174 lists two zero-input PSBTs as valid
         and btclib refused both (issue 170).
         """
-        _assert_valid_coinbase(self.vin, is_coinbase=self.is_coinbase)
-
         # the type before the range, as BlockHeader.assert_valid checks its
         # own two int fields: a bool passes every comparison below as one or
         # zero, and `to_dict`/`from_dict` is a json boundary -- `true` there
@@ -355,10 +353,36 @@ class Tx:  # noqa: PLW1641
         _assert_valid_4_byte_field("version", self.version)
         _assert_valid_4_byte_field("lock time", self.lock_time)
 
+        # From here on the order matches CheckTransaction's own
+        # (consensus/tx_check.cpp): vin-empty, vout-empty, each output's
+        # value and the running total, duplicate inputs, then the
+        # coinbase script length or a null prevout in a non-coinbase --
+        # so that a transaction breaking several of these at once is
+        # reported under the same rule Core reports it under (issue #2417).
         if not unsigned_template and not self.vin:
             raise BTClibValueError("Missing inputs")
         for tx_in in self.vin:
             tx_in.assert_valid()
+
+        if not unsigned_template and not self.vout:
+            raise BTClibValueError("Missing outputs")
+
+        # CheckTransaction bounds each output and the running total in
+        # the same pass over the outputs, not in two: an earlier output
+        # can already push the total past MAX_MONEY, and Core reports
+        # that before it ever looks at a later output's own value, so a
+        # transaction breaking both is reported under the total's own
+        # rule rather than under whichever output the second pass would
+        # have reached first. Only the sum of the outputs, as there, and
+        # not the fee: what the inputs are worth is not in the
+        # transaction, and comparing the two is verify_amounts' job,
+        # with the prevouts in hand
+        total = 0
+        for tx_out in self.vout:
+            tx_out.assert_valid()
+            total += tx_out.value
+            if total > _MAX_SATOSHI:
+                raise BTClibValueError(f"invalid total output amount: {total}")
 
         # CheckTransaction's `bad-txns-inputs-duplicate` (CVE-2018-17144):
         # an outpoint named twice would be spent twice, and every arithmetic
@@ -374,20 +398,7 @@ class Tx:  # noqa: PLW1641
         if len(set(outpoints)) != len(outpoints):
             raise BTClibValueError("the same outpoint is spent twice")
 
-        if not unsigned_template and not self.vout:
-            raise BTClibValueError("Missing outputs")
-        for tx_out in self.vout:
-            tx_out.assert_valid()
-
-        # CheckTransaction bounds the outputs one by one and then their
-        # sum, and the second check is not implied by the first: every
-        # output can be within MoneyRange while the total is above it.
-        # Only the sum of the outputs, as there, and not the fee: what
-        # the inputs are worth is not in the transaction, and comparing
-        # the two is verify_amounts' job, with the prevouts in hand
-        total = sum(tx_out.value for tx_out in self.vout)
-        if total > _MAX_SATOSHI:
-            raise BTClibValueError(f"invalid total output amount: {total}")
+        _assert_valid_coinbase(self.vin, is_coinbase=self.is_coinbase)
 
     def serialize(self, include_witness: bool, *, check_validity: bool = True) -> bytes:
         """Return the wire serialization, BIP144's where a witness rides.

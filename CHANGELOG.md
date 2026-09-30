@@ -70,6 +70,12 @@ An issue carrying the label is small and self-contained: *The issue
 tracker* says so, and links the organization-wide search for the open
 ones (issue btclib-org/.github#1362).
 
+### `Tx.assert_valid` reports a multi-violation transaction under Core's own rule
+
+The coinbase script length / null-prevout check now runs last in
+`assert_valid`, and each output's value and the running total are checked in
+one pass, matching `CheckTransaction`'s own order (closes #2417).
+
 ## v2026.9.29
 
 ### `requires-python` moves to `>=3.11`
