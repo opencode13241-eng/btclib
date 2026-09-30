@@ -1202,6 +1202,44 @@ def test_a_block_cannot_hold_too_many_transactions_or_too_many_bytes() -> None:
         block.assert_valid()
 
 
+def test_parse_reports_bad_blk_length_before_a_tx_reject_reason() -> None:
+    """CheckBlock asks every corruption question before CheckTransaction.
+
+    Core answers `bad-blk-length` before it ever runs `CheckTransaction`
+    on a single transaction (bitcoin/bitcoin@9be056a8a7, validation.cpp,
+    "All potential-corruption validation must be done before we do any
+    transaction validation"). A block whose only defect is one
+    oversize transaction must therefore answer under the block's own
+    rule and not under the transaction's `bad-txns-oversize` -- and only
+    a real round trip through `Block.parse` can tell the two apart,
+    since a transaction parsed off the wire is what used to be checked
+    on its own, one at a time, before the block-level check ever ran
+    (issue #2422).
+    """
+    fname = "block_1.bin"
+    filename = Path(__file__).parent / "_data" / fname
+    with filename.open("rb") as file_:
+        block_bytes = file_.read()
+
+    limit = MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR
+    block = Block.parse(block_bytes)
+    header, coinbase = block.header, block.transactions[0]
+    coinbase.vout[0] = TxOut(coinbase.vout[0].value, ScriptPubKey(b"\x00" * limit))
+
+    # the same single transaction is oversize on its own, exactly the
+    # shape test_oversize_is_refused (tests/tx/tx_test.py) refuses
+    assert coinbase._serialized_size(include_witness=False) > limit
+
+    oversize_block = Block(header, [coinbase], check_validity=False)
+    assert oversize_block.stripped_size == 1_000_152
+    serialization = oversize_block.serialize(check_validity=False)
+
+    err_msg = f"invalid stripped size: 1000152 \\* {WITNESS_SCALE_FACTOR}"
+    err_msg += f" > {MAX_BLOCK_WEIGHT}"
+    with pytest.raises(BTClibValueError, match=err_msg):
+        Block.parse(serialization)
+
+
 def test_a_block_cannot_weigh_more_than_the_cap() -> None:
     """Core's bad-blk-weight, and why it is asked after the commitment.
 

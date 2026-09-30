@@ -695,9 +695,16 @@ class Block:
         n = var_int.parse(
             stream, MAX_BLOCK_WEIGHT // MIN_SERIALIZABLE_TRANSACTION_WEIGHT
         )
-        transactions = [
-            Tx.parse(stream, check_validity=check_validity) for _ in range(n)
-        ]
+        # check_validity=False regardless of the caller's own argument:
+        # a transaction checked here, one at a time as it is read off the
+        # wire, answers for itself before assert_valid_structure below
+        # has asked assert_valid_length's own bad-blk-length -- Core's
+        # CheckBlock asks every potential-corruption question about the
+        # block before it checks a single transaction
+        # (bitcoin/bitcoin@9be056a8a7, validation.cpp), and cls' own
+        # check_validity below, in Block.assert_valid's order, is what
+        # asks each transaction's assert_valid after it
+        transactions = [Tx.parse(stream, check_validity=False) for _ in range(n)]
         assert_no_trailing(data, stream, "block")
 
         return cls(header, transactions, check_validity=check_validity)

@@ -94,6 +94,12 @@ The stripped size, weighed `WITNESS_SCALE_FACTOR` times against
 `MAX_BLOCK_WEIGHT` -- CheckTransaction's `bad-txns-oversize`, which nothing
 here checked before (closes #2420).
 
+### `Block.parse` checks each transaction in `CheckBlock`'s own order
+
+Each transaction now parses unchecked and is validated by
+`assert_valid_structure`, in `CheckBlock`'s own order, rather than one at a
+time as `Block.parse` reads it off the wire (closes #2422).
+
 ## v2026.9.29
 
 ### `requires-python` moves to `>=3.11`

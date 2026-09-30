@@ -534,14 +534,14 @@ def test_the_checks_fire_in_cores_own_order() -> None:
     """A transaction breaking several rules at once names Core's first one.
 
     `CheckTransaction` (consensus/tx_check.cpp) checks, in order:
-    vin-empty, vout-empty, each output's value and the running total,
-    duplicate inputs, then the coinbase script length or a null prevout
-    in a non-coinbase transaction (issue #2417). Each transaction below
-    breaks the two rules its comment names at once, at the boundary
-    between two adjacent checks, and only the earlier of the two is
-    what `assert_valid` raises -- the running total against a later
-    output's own bad value included, the two being one pass over the
-    outputs and not two.
+    vin-empty, vout-empty, the stripped size against the block weight cap,
+    each output's value and the running total, duplicate inputs, then the
+    coinbase script length or a null prevout in a non-coinbase transaction
+    (issue #2417, issue #2420). Each transaction below breaks the two
+    rules its comment names at once, at the boundary between two adjacent
+    checks, and only the earlier of the two is what `assert_valid` raises
+    -- the running total against a later output's own bad value included,
+    the two being one pass over the outputs and not two.
     """
     out_point = OutPoint(b"\x01" * 32, 0)
     tx_out = TxOut(1, "")
@@ -562,6 +562,28 @@ def test_the_checks_fire_in_cores_own_order() -> None:
         Tx(
             vin=[TxIn(out_point), TxIn(OutPoint())],
             vout=[],
+            check_validity=False,
+        ).assert_valid()
+
+    # vout-empty before the oversize check -- TxIn.assert_valid does not
+    # bound script_sig, so a huge one makes the transaction oversize with
+    # no output at all
+    huge_script_sig = b"\x00" * (MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR + 100)
+    with pytest.raises(BTClibValueError, match="Missing outputs"):
+        Tx(
+            vin=[TxIn(out_point, huge_script_sig)],
+            vout=[],
+            check_validity=False,
+        ).assert_valid()
+
+    # the oversize check before each output's value -- the transaction is
+    # already over the cap from its first output's own script before the
+    # second output's negative value is ever looked at
+    huge_out = TxOut(1, ScriptPubKey(b"\x00" * 999_937))
+    with pytest.raises(BTClibValueError, match="invalid transaction size: "):
+        Tx(
+            vin=[TxIn(out_point)],
+            vout=[huge_out, TxOut(-1, "", check_validity=False)],
             check_validity=False,
         ).assert_valid()
 
