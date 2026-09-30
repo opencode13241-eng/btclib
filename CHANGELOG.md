@@ -82,6 +82,12 @@ A headers-only sync can check a retarget without the two timestamps
 `next_bits` needs, matching Core's `PermittedDifficultyTransition`
 (closes #2418).
 
+### `codeql.yml`'s aggregate runs `check_run_jobs.py`
+
+The aggregate's step runs `check_run_jobs.py`, which reads the run's jobs
+listing again up to a deadline while a row of `analyze` is unfinished
+(issue btclib-org/.github#1463).
+
 ## v2026.9.29
 
 ### `requires-python` moves to `>=3.11`
