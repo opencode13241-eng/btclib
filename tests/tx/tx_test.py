@@ -343,6 +343,38 @@ def test_output_total_is_bounded() -> None:
         Tx(vin=[tx_in], vout=[TxOut(max_money // 2 + 1, "")] * 2)
 
 
+def test_oversize_is_refused() -> None:
+    """CheckTransaction's `bad-txns-oversize` (issue #2420).
+
+    The stripped size, weighed `WITNESS_SCALE_FACTOR` times against
+    `MAX_BLOCK_WEIGHT` -- Block.assert_valid_length's own comparison,
+    for one transaction rather than for the block. 999,936 script bytes
+    is what a one-input, one-output transaction needs to serialize to
+    exactly the 1,000,000-byte cap `MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR`
+    names; one byte more crosses it.
+    """
+    tx_in = TxIn(OutPoint(b"\x01" * 32, 0))
+
+    def _tx(script_len: int) -> Tx:
+        return Tx(
+            vin=[tx_in],
+            vout=[TxOut(1, ScriptPubKey(b"\x00" * script_len))],
+            check_validity=False,
+        )
+
+    at_cap = _tx(999_936)
+    assert at_cap._serialized_size(include_witness=False) == (
+        MAX_BLOCK_WEIGHT // WITNESS_SCALE_FACTOR
+    )
+    at_cap.assert_valid()
+
+    over_cap = _tx(999_937)
+    err_msg = "invalid transaction size: 1000001 "
+    err_msg += f"\\* {WITNESS_SCALE_FACTOR} > {MAX_BLOCK_WEIGHT}"
+    with pytest.raises(BTClibValueError, match=err_msg):
+        over_cap.assert_valid()
+
+
 def test_one_outpoint_is_spent_once() -> None:
     """An outpoint named twice is refused, as `bad-txns-inputs-duplicate`.
 
