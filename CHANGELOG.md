@@ -82,6 +82,12 @@ A headers-only sync can check a retarget without the two timestamps
 `next_bits` needs, matching Core's `PermittedDifficultyTransition`
 (closes #2418).
 
+### The release's attestation bundle is attached as `*.intoto.jsonl`
+
+`RELEASING.md`'s commands and `SECURITY.md`'s verification name the bundle
+`<tag>.intoto.jsonl`, the name `reusable-github-release.yml` attaches it under
+(issue btclib-org/.github#1468).
+
 ## v2026.9.29
 
 ### `requires-python` moves to `>=3.11`
